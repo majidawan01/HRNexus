@@ -82,7 +82,7 @@ export default function Payroll() {
   };
 
   const downloadPayslip = (payrollId) => {
-    window.open(`http://localhost:5000/api/payslip/${payrollId}`, '_blank');
+    window.open(`https://hr-nexus-mocha.vercel.app/api/payslip/${payrollId}`, '_blank');
   };
 
   return (

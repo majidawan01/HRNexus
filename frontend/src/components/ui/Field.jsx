@@ -2,7 +2,8 @@ import { useId, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
 // Label + input + error/hint. type="password" ho to show/hide button milta hai.
-export default function Field({ label, error, hint, type = 'text', className = '', ...props }) {
+// as="select" / as="textarea" bhi chalta hai (children select ke options hain).
+export default function Field({ label, error, hint, type = 'text', as: Control = 'input', className = '', children, ...props }) {
   const id = useId();
   const [show, setShow] = useState(false);
   const isPassword = type === 'password';
@@ -13,16 +14,18 @@ export default function Field({ label, error, hint, type = 'text', className = '
         {label}
       </label>
       <div className="relative">
-        <input
+        <Control
           id={id}
-          type={isPassword && show ? 'text' : type}
+          type={Control === 'input' ? (isPassword && show ? 'text' : type) : undefined}
           aria-invalid={error ? 'true' : undefined}
           aria-describedby={error || hint ? `${id}-msg` : undefined}
           className={`w-full px-4 py-3 rounded-xl bg-bg border text-ink font-body focus:outline-none focus:ring-2 transition ${
             isPassword ? 'pr-12' : ''
           } ${error ? 'border-rust focus:ring-rust' : 'border-border focus:ring-accent'}`}
           {...props}
-        />
+        >
+          {children}
+        </Control>
         {isPassword && (
           <button
             type="button"

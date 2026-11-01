@@ -1,237 +1,188 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Download } from 'lucide-react';
+import { useState } from 'react';
+import { Download, Plus, Wallet } from 'lucide-react';
 import Layout from '../components/Layout';
+import Modal from '../components/ui/Modal';
+import Field from '../components/ui/Field';
+import Button from '../components/ui/Button';
+import PageHeader from '../components/ui/PageHeader';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import DataTable from '../components/ui/DataTable';
+import EmptyState from '../components/ui/EmptyState';
 import API from '../api/axios';
+import useResource from '../hooks/useResource';
+import { downloadFile } from '../lib/download';
+import { errorText } from '../lib/errors';
+import { useToast } from '../context/toast-context';
 
 const months = [
   'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+const rs = (n) => `Rs. ${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
 export default function Payroll() {
-  const [payrolls, setPayrolls] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState('');
-  const [formData, setFormData] = useState({
-    employeeId: '',
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
+  const [exporting, setExporting] = useState(false);
+  const [slipId, setSlipId] = useState(null);
+
+  const { data, status, error, reload } = useResource(async () => {
+    const [pay, emp] = await Promise.all([API.get('/payroll'), API.get('/employees')]);
+    return { payrolls: pay.data, employees: emp.data };
   });
-
-  const token = localStorage.getItem('token');
-  const headers = { Authorization: `Bearer ${token}` };
-
-  const fetchData = async () => {
-    try {
-      const [payRes, empRes] = await Promise.all([
-        API.get('/payroll', { headers }),
-        API.get('/employees', { headers }),
-      ]);
-      setPayrolls(payRes.data);
-      setEmployees(empRes.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    try {
-      await API.post('/payroll/generate', {
-        ...formData,
-        month: Number(formData.month),
-        year: Number(formData.year),
-      }, { headers });
-      setIsModalOpen(false);
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to generate payroll.');
-    }
-  };
+  const payrolls = data?.payrolls || [];
+  const employees = data?.employees || [];
 
   const handleExport = async () => {
+    setExporting(true);
     try {
-      const res = await API.get('/export/payroll', {
-        headers,
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'payroll_report.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await downloadFile('/export/payroll', 'payroll_report.xlsx');
+      toast.success('Payroll report downloaded.');
     } catch (err) {
-      console.error('Export failed:', err);
+      toast.error(err.message);
+    } finally {
+      setExporting(false);
     }
   };
 
-  const downloadPayslip = (payrollId) => {
-    window.open(`https://hr-nexus-mocha.vercel.app/api/payslip/${payrollId}`, '_blank');
+  const downloadPayslip = async (p) => {
+    setSlipId(p._id);
+    const name = (p.employeeId?.fullName || 'employee').replace(/[^\w-]+/g, '_');
+    try {
+      await downloadFile(`/payslip/${p._id}`, `payslip_${name}_${p.year}_${String(p.month).padStart(2, '0')}.pdf`);
+      toast.success('Payslip downloaded.');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSlipId(null);
+    }
   };
+
+  const columns = [
+    { header: 'Employee', primary: true, cell: (p) => p.employeeId?.fullName || 'Unknown', className: 'font-body text-sm text-ink font-medium' },
+    { header: 'Period', cell: (p) => `${months[p.month - 1]} ${p.year}`, className: 'font-mono text-sm text-ash' },
+    { header: 'Gross', cell: (p) => rs(p.grossSalary), className: 'font-mono text-sm text-ash' },
+    { header: 'Deductions', cell: (p) => rs(p.totalDeductions), className: 'font-mono text-sm text-rust' },
+    { header: 'Net salary', cell: (p) => rs(p.netSalary), className: 'font-mono text-sm text-teal font-semibold' },
+    {
+      header: '',
+      className: '',
+      cell: (p) => (
+        <Button size="sm" variant="secondary" loading={slipId === p._id} onClick={() => downloadPayslip(p)}>
+          {slipId !== p._id && <Download size={16} />} Payslip
+        </Button>
+      ),
+    },
+  ];
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <p className="font-mono text-xs text-ash uppercase tracking-widest mb-1">Compensation</p>
-            <h1 className="font-display text-3xl font-semibold text-ink">Payroll</h1>
-          </div>
-          <div className="flex gap-3">
-            <motion.button
-              onClick={handleExport}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 bg-surface text-ink font-display font-medium px-5 py-3 rounded-xl border border-border"
-            >
-              <Download size={18} />
-              Export
-            </motion.button>
-            <motion.button
-              onClick={() => setIsModalOpen(true)}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 bg-accent text-white font-display font-medium px-5 py-3 rounded-xl shadow-sm"
-            >
-              <Plus size={18} />
-              Generate Payroll
-            </motion.button>
-          </div>
-        </div>
+      <div className="p-4 sm:p-8">
+        <PageHeader eyebrow="Compensation" title="Payroll">
+          <Button variant="secondary" onClick={handleExport} loading={exporting}>
+            {!exporting && <Download size={18} />} Export
+          </Button>
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus size={18} /> Generate payroll
+          </Button>
+        </PageHeader>
+
+        {status === 'error' && <ErrorBanner title="Could not load payroll" message={error} onRetry={reload} />}
 
         <div className="bg-surface rounded-2xl overflow-hidden border border-border shadow-sm">
-          {loading ? (
-            <p className="p-8 text-center text-ash font-body">Loading...</p>
-          ) : payrolls.length === 0 ? (
-            <p className="p-8 text-center text-ash font-body">No payroll records yet.</p>
+          {status === 'error' ? (
+            <EmptyState icon={Wallet} title="Payroll unavailable" text="Fix the problem above and try again." />
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Employee</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Period</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Gross</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Deductions</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Net Salary</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Payslip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payrolls.map((p) => (
-                  <tr key={p._id} className="border-b border-border/60 hover:bg-bg/50 transition">
-                    <td className="px-6 py-4 font-body text-sm text-ink font-medium">
-                      {p.employeeId?.fullName || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-ash">
-                      {months[p.month - 1]} {p.year}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-ash">
-                      Rs. {p.grossSalary?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-rust">
-                      Rs. {p.totalDeductions?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-teal font-semibold">
-                      Rs. {p.netSalary?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => downloadPayslip(p._id)}
-                        className="flex items-center gap-1.5 text-accent hover:opacity-70 text-sm font-body"
-                      >
-                        <Download size={16} />
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              columns={columns}
+              rows={payrolls}
+              loading={status === 'loading'}
+              empty={
+                <EmptyState
+                  icon={Wallet}
+                  title="No payroll records yet"
+                  text="Generate payroll for an employee and month to see it here."
+                  action={
+                    <Button onClick={() => setIsModalOpen(true)}>
+                      <Plus size={18} /> Generate payroll
+                    </Button>
+                  }
+                />
+              }
+            />
           )}
         </div>
       </div>
 
-      <AnimatePresence>
-        {isModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50 px-4"
-            onClick={() => setIsModalOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-surface rounded-2xl p-8 w-full max-w-md border border-border shadow-xl"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-display text-xl font-semibold text-ink">Generate Payroll</h2>
-                <button onClick={() => setIsModalOpen(false)} className="text-ash hover:text-ink transition">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-mono uppercase tracking-wider text-ash mb-1.5">Employee</label>
-                  <select name="employeeId" value={formData.employeeId} onChange={handleChange} required
-                    className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-ink font-body text-sm focus:outline-none focus:ring-2 focus:ring-accent">
-                    <option value="">Select employee</option>
-                    {employees.map((emp) => (
-                      <option key={emp._id} value={emp._id}>{emp.fullName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-ash mb-1.5">Month</label>
-                    <select name="month" value={formData.month} onChange={handleChange}
-                      className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-ink font-body text-sm focus:outline-none focus:ring-2 focus:ring-accent">
-                      {months.map((m, i) => (
-                        <option key={i} value={i + 1}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-ash mb-1.5">Year</label>
-                    <input type="number" name="year" value={formData.year} onChange={handleChange}
-                      className="w-full px-3 py-2.5 rounded-xl bg-bg border border-border text-ink font-body text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-                  </div>
-                </div>
-
-                {error && (
-                  <p className="text-rust text-sm font-body bg-rust/10 rounded-xl px-3 py-2">{error}</p>
-                )}
-
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit"
-                  className="w-full bg-accent text-white font-display font-medium py-3 rounded-xl shadow-sm">
-                  Generate
-                </motion.button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <GenerateModal open={isModalOpen} onClose={() => setIsModalOpen(false)} employees={employees} onSaved={() => reload(true)} />
     </Layout>
+  );
+}
+
+function GenerateModal({ open, onClose, employees, onSaved }) {
+  const toast = useToast();
+  const [form, setForm] = useState(() => ({
+    employeeId: '',
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  }));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await API.post('/payroll/generate', { ...form, month: Number(form.month), year: Number(form.year) });
+      toast.success('Payroll generated.');
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errorText(err, 'Failed to generate payroll.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Generate payroll" maxWidth="max-w-md">
+      {employees.length === 0 ? (
+        <EmptyState title="Add an employee first" text="Payroll is generated per employee." />
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <Field as="select" label="Employee" name="employeeId" value={form.employeeId} onChange={change} required>
+            <option value="">Select employee</option>
+            {employees.map((emp) => (
+              <option key={emp._id} value={emp._id}>
+                {emp.fullName}
+              </option>
+            ))}
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field as="select" label="Month" name="month" value={form.month} onChange={change}>
+              {months.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </Field>
+            <Field label="Year" type="number" name="year" value={form.year} onChange={change} required />
+          </div>
+
+          {error && (
+            <p role="alert" className="text-rust text-sm font-body bg-rust/10 rounded-xl px-3 py-2">
+              {error}
+            </p>
+          )}
+          <Button type="submit" loading={saving} className="w-full">
+            Generate
+          </Button>
+        </form>
+      )}
+    </Modal>
   );
 }

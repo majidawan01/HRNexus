@@ -1,123 +1,161 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Plus, Search, Trash2, Users } from 'lucide-react';
 import Layout from '../components/Layout';
 import EmployeeModal from '../components/EmployeeModal';
+import PageHeader from '../components/ui/PageHeader';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import DataTable from '../components/ui/DataTable';
+import EmptyState from '../components/ui/EmptyState';
+import StatusPill from '../components/ui/StatusPill';
+import Button from '../components/ui/Button';
 import API from '../api/axios';
+import useResource from '../hooks/useResource';
+import { errorText } from '../lib/errors';
+import { useAuth } from '../context/auth-context';
+import { useConfirm } from '../context/confirm-context';
+import { useToast } from '../context/toast-context';
 
 export default function Employees() {
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user, refreshCompany } = useAuth();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const fetchEmployees = async () => {
+  const canEdit = user.role === 'admin' || user.role === 'hr';
+  const canDelete = user.role === 'admin';
+
+  const { data, status, error, reload } = useResource(() => API.get('/employees').then((r) => r.data));
+  const employees = useMemo(() => data || [], [data]);
+  const loading = status === 'loading';
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(
+      (e) => e.fullName?.toLowerCase().includes(q) || e.employeeCode?.toLowerCase().includes(q)
+    );
+  }, [employees, search]);
+
+  // Employee add/delete se plan usage badalta hai, isliye sidebar/dashboard ka count bhi taza karo
+  const afterChange = () => {
+    reload(true);
+    refreshCompany();
+  };
+
+  const handleDelete = async (emp) => {
+    const ok = await confirm({
+      title: `Delete ${emp.fullName}?`,
+      message: 'This removes the employee from your company. This cannot be undone.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setDeletingId(emp._id);
     try {
-      const token = localStorage.getItem('token');
-      const res = await API.get('/employees', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setEmployees(res.data);
-    } catch (error) {
-      console.error('Failed to fetch employees:', error);
+      await API.delete(`/employees/${emp._id}`);
+      toast.success(`${emp.fullName} deleted.`);
+      afterChange();
+    } catch (err) {
+      toast.error(errorText(err, 'Could not delete employee.'));
     } finally {
-      setLoading(false);
+      setDeletingId(null);
     }
   };
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
+  const columns = [
+    { header: 'Code', cell: (e) => e.employeeCode, className: 'font-mono text-sm text-ash' },
+    { header: 'Name', primary: true, cell: (e) => e.fullName, className: 'font-body text-sm text-ink font-medium' },
+    { header: 'Department', cell: (e) => e.department },
+    { header: 'Designation', cell: (e) => e.designation },
+    { header: 'Status', cell: (e) => <StatusPill status={e.status} />, className: '' },
+    ...(canEdit
+      ? [{ header: 'Salary', cell: (e) => `Rs. ${e.baseSalary?.toLocaleString() ?? 0}`, className: 'font-mono text-sm text-ink' }]
+      : []),
+    ...(canDelete
+      ? [
+          {
+            header: '',
+            className: 'text-right',
+            cell: (e) => (
+              <button
+                onClick={() => handleDelete(e)}
+                disabled={deletingId === e._id}
+                aria-label={`Delete ${e.fullName}`}
+                className="inline-flex items-center gap-1.5 text-rust hover:opacity-70 disabled:opacity-40 text-sm font-body"
+              >
+                <Trash2 size={16} />
+                <span className="md:hidden">Delete</span>
+              </button>
+            ),
+          },
+        ]
+      : []),
+  ];
 
-  const filteredEmployees = employees.filter((emp) =>
-    emp.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    emp.employeeCode.toLowerCase().includes(search.toLowerCase())
-  );
+  const emptyState =
+    employees.length === 0 ? (
+      <EmptyState
+        icon={Users}
+        title="No employees yet"
+        text={canEdit ? 'Add your first employee, or load sample data from Settings.' : 'Employees will appear here once they are added.'}
+        action={
+          canEdit && (
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Plus size={18} /> Add employee
+            </Button>
+          )
+        }
+      />
+    ) : (
+      <EmptyState
+        icon={Search}
+        title="No employees match"
+        text="Try a different name or code."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => setSearch('')}>
+            Clear search
+          </Button>
+        }
+      />
+    );
 
   return (
     <Layout>
-      <div className="p-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <p className="font-mono text-xs text-ash uppercase tracking-widest mb-1">
-              Directory
-            </p>
-            <h1 className="font-display text-3xl font-semibold text-ink">
-              Employees
-            </h1>
-          </div>
-          <motion.button
-            onClick={() => setIsModalOpen(true)}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="flex items-center gap-2 bg-accent text-white font-display font-medium px-5 py-3 rounded-xl shadow-sm"
-          >
-            <Plus size={18} />
-            Add Employee
-          </motion.button>
-        </div>
+      <div className="p-4 sm:p-8">
+        <PageHeader eyebrow="Directory" title="Employees">
+          {canEdit && (
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Plus size={18} /> Add employee
+            </Button>
+          )}
+        </PageHeader>
 
-        {/* Search */}
-        <div className="relative mb-6 max-w-sm">
+        {status === 'error' && <ErrorBanner title="Could not load employees" message={error} onRetry={reload} />}
+
+        <div className="relative mb-6 sm:max-w-sm">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ash" />
           <input
-            type="text"
+            type="search"
             placeholder="Search by name or code..."
+            aria-label="Search employees"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-border text-ink font-body text-sm focus:outline-none focus:ring-2 focus:ring-accent transition"
           />
         </div>
 
-        {/* Table */}
         <div className="bg-surface rounded-2xl overflow-hidden border border-border shadow-sm">
-          {loading ? (
-            <p className="p-8 text-center text-ash font-body">Loading employees...</p>
-          ) : filteredEmployees.length === 0 ? (
-            <p className="p-8 text-center text-ash font-body">No employees found.</p>
+          {status === 'error' ? (
+            <EmptyState icon={Users} title="Employees unavailable" text="Fix the problem above and try again." />
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Code</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Name</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Department</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Designation</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Status</th>
-                  <th className="px-6 py-4 font-mono text-xs uppercase tracking-wider text-ash">Salary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEmployees.map((emp) => (
-                  <tr key={emp._id} className="border-b border-border/60 hover:bg-bg/50 transition">
-                    <td className="px-6 py-4 font-mono text-sm text-ash">{emp.employeeCode}</td>
-                    <td className="px-6 py-4 font-body text-sm text-ink font-medium">{emp.fullName}</td>
-                    <td className="px-6 py-4 font-body text-sm text-ash">{emp.department}</td>
-                    <td className="px-6 py-4 font-body text-sm text-ash">{emp.designation}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-mono uppercase ${
-                        emp.status === 'active' ? 'bg-accent text-white' : 'bg-rust/10 text-rust'
-                      }`}>
-                        {emp.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-ink">
-                      Rs. {emp.baseSalary?.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable columns={columns} rows={filtered} loading={loading} empty={emptyState} />
           )}
         </div>
       </div>
 
-      <EmployeeModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={fetchEmployees}
-      />
+      {canEdit && <EmployeeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={afterChange} />}
     </Layout>
   );
 }

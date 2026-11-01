@@ -9,6 +9,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// MongoDB connection: ek hi promise cache hota hai (Vercel serverless mein har request
+// purane connection ko dobara use kare), aur request tab chalti hai jab DB connect ho chuka ho.
+let dbPromise = null;
+function connectDB() {
+  if (!dbPromise) {
+    dbPromise = mongoose
+      .connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 })
+      .then((m) => {
+        console.log('✅ MongoDB connected');
+        return m;
+      })
+      .catch((err) => {
+        dbPromise = null; // agli request dobara koshish kare
+        throw err;
+      });
+  }
+  return dbPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.log('❌ MongoDB connection error:', err.message);
+    res.status(503).json({ message: 'Database is unavailable. Please try again in a moment.' });
+  }
+});
+
 // Routes
 const employeeRoutes = require('./routes/employeeRoutes');
 app.use('/api/employees', employeeRoutes);
@@ -42,12 +71,6 @@ app.get('/', (req, res) => {
   res.send('HRNexus Backend is running ✅');
 });
 
-// MongoDB connect
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch((err) => console.log('❌ MongoDB connection error:', err));
-
-// Server start
 // Server start
 const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'production') {

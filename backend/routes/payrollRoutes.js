@@ -5,14 +5,16 @@ const Employee = require('../models/Employee');
 const Attendance = require('../models/Attendance');
 const Leave = require('../models/Leave');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { tenant } = require('../middleware/tenant');
+const { stripTenantFields, employeeInCompany } = require('../utils/tenantHelpers');
 
 // GENERATE PAYROLL - Ek employee ki ek month ki salary calculate karna (sirf admin/hr)
-router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => {
+router.post('/generate', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
     const { employeeId, month, year } = req.body;
 
     // 1. Employee ka data nikalna
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findOne({ _id: employeeId, companyId: req.companyId });
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
@@ -24,6 +26,7 @@ router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => 
 
     // 3. Us employee ki us month ki attendance nikalna
     const attendanceRecords = await Attendance.find({
+      companyId: req.companyId,
       employeeId: employeeId,
       date: { $gte: startDate, $lte: endDate }
     });
@@ -43,6 +46,7 @@ router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => 
 
     // 5. Us month ki approved leaves nikalna
     const leaves = await Leave.find({
+      companyId: req.companyId,
       employeeId: employeeId,
       status: 'approved',
       startDate: { $lte: endDate },
@@ -91,6 +95,7 @@ router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => 
 
     // 13. Payroll record banana ya update karna (agar pehle se ho to overwrite)
     const payrollData = {
+      companyId: req.companyId,
       employeeId,
       month,
       year,
@@ -112,7 +117,7 @@ router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => 
     };
 
     const payroll = await Payroll.findOneAndUpdate(
-      { employeeId, month, year },
+      { companyId: req.companyId, employeeId, month, year },
       payrollData,
       { new: true, upsert: true, runValidators: true }
     );
@@ -124,9 +129,9 @@ router.post('/generate', protect, authorize('admin', 'hr'), async (req, res) => 
 });
 
 // READ - Sab payroll records dekhna
-router.get('/', protect, authorize('admin', 'hr'), async (req, res) => {
+router.get('/', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const payrolls = await Payroll.find().populate('employeeId', 'fullName employeeCode');
+    const payrolls = await Payroll.find({ companyId: req.companyId }).populate('employeeId', 'fullName employeeCode');
     res.status(200).json(payrolls);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -134,9 +139,9 @@ router.get('/', protect, authorize('admin', 'hr'), async (req, res) => {
 });
 
 // READ - Ek employee ki payroll history dekhna
-router.get('/employee/:employeeId', protect, async (req, res) => {
+router.get('/employee/:employeeId', protect, tenant, async (req, res) => {
   try {
-    const payrolls = await Payroll.find({ employeeId: req.params.employeeId });
+    const payrolls = await Payroll.find({ companyId: req.companyId, employeeId: req.params.employeeId });
     res.status(200).json(payrolls);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -144,11 +149,14 @@ router.get('/employee/:employeeId', protect, async (req, res) => {
 });
 
 // UPDATE - Payroll status finalize/paid karna (sirf admin/hr)
-router.put('/:id', protect, authorize('admin', 'hr'), async (req, res) => {
+router.put('/:id', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const payroll = await Payroll.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+    if (req.body.employeeId && !(await employeeInCompany(req.companyId, req.body.employeeId))) {
+      return res.status(400).json({ message: 'Employee not found in your company' });
+    }
+    const payroll = await Payroll.findOneAndUpdate(
+      { _id: req.params.id, companyId: req.companyId },
+      stripTenantFields(req.body),
       { new: true, runValidators: true }
     );
     if (!payroll) {

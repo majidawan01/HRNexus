@@ -1,33 +1,35 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const PDFDocument = require('pdfkit');
 const Payroll = require('../models/Payroll');
 const Employee = require('../models/Employee');
+const { protect, authorize } = require('../middleware/authMiddleware');
+const { tenant } = require('../middleware/tenant');
 
 // GENERATE PAYSLIP PDF - Payroll ID se PDF banana
-router.get('/:payrollId', async (req, res) => {
+router.get('/:payrollId', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
     // 1. Payroll aur Employee ka data nikalna
-    const payroll = await Payroll.findById(req.params.payrollId);
+    const payroll = await Payroll.findOne({ _id: req.params.payrollId, companyId: req.companyId });
     if (!payroll) {
       return res.status(404).json({ message: 'Payroll record not found' });
     }
 
-    const employee = await Employee.findById(payroll.employeeId);
+    const employee = await Employee.findOne({ _id: payroll.employeeId, companyId: req.companyId });
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    // 2. PDF file ka naam aur path banana
+    // 2. PDF seedha response mein stream hoti hai (disk par nahi likhte: Vercel read-only hai,
+    //    aur file name company-wise unique nahi hota)
     const fileName = `payslip_${employee.employeeCode}_${payroll.month}_${payroll.year}.pdf`;
-    const filePath = path.join(__dirname, '../payslips', fileName);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
     // 3. Naya PDF document banana
-  const doc = new PDFDocument({ margin: 50 });
-const writeStream = fs.createWriteStream(filePath);
-doc.pipe(writeStream);
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
     // 4. Header
     doc.fontSize(20).text('HRNexus - Salary Payslip', { align: 'center' });
     doc.moveDown();
@@ -77,12 +79,7 @@ doc.pipe(writeStream);
     doc.text(`Total Deductions: Rs. ${payroll.totalDeductions.toFixed(2)}`);
     doc.fontSize(14).text(`Net Salary: Rs. ${payroll.netSalary.toFixed(2)}`, { bold: true });
 
-  doc.end();
-
-// 10. PDF ban jane ke baad (file poori tarah disk par likh jane ke baad), use response mein bhej dena
-writeStream.on('finish', () => {
-  res.download(filePath);
-});
+    doc.end();
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -55,6 +55,26 @@ async function run() {
     console.log('Koi purana document nahi mila jis ko companyId chahiye');
   }
 
+  // 1b. User emails lowercase (login ab lowercase email se dhoondta hai)
+  let lowered = 0;
+  const conflicts = [];
+  const users = await User.find({}, 'email').lean();
+  for (const u of users) {
+    const lower = typeof u.email === 'string' ? u.email.trim().toLowerCase() : u.email;
+    if (!lower || lower === u.email) continue;
+    const clash = await User.exists({ email: lower, _id: { $ne: u._id } });
+    if (clash) {
+      conflicts.push(u.email);
+      continue;
+    }
+    await User.updateOne({ _id: u._id }, { $set: { email: lower } });
+    lowered++;
+  }
+  console.log(`User emails lowercased: ${lowered}`);
+  if (conflicts.length) {
+    console.warn('WARNING: in emails ko lowercase nahi kar saka (doosra user already maujood hai), khud theek karein:', conflicts);
+  }
+
   // 2. Purane indexes drop
   for (const { model, name } of OLD_INDEXES) {
     try {

@@ -29,6 +29,9 @@ app.use('/api/biometric', biometricRoutes);
 const exportRoutes = require('./routes/exportRoutes');
 app.use('/api/export', exportRoutes);
 
+const dashboardRoutes = require('./routes/dashboardRoutes');
+app.use('/api/dashboard', dashboardRoutes);
+
 // Test route
 app.get('/', (req, res) => {
   res.send('HRNexus Backend is running ✅');

@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Shift = require('../models/Shift');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { tenant } = require('../middleware/tenant');
+const { stripTenantFields } = require('../utils/tenantHelpers');
 
 // CREATE - Naya shift banana (sirf admin/hr)
-router.post('/', protect, authorize('admin', 'hr'), async (req, res) => {
+router.post('/', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const shift = new Shift(req.body);
+    const shift = new Shift({ ...stripTenantFields(req.body), companyId: req.companyId });
     await shift.save();
     res.status(201).json(shift);
   } catch (error) {
@@ -14,10 +16,10 @@ router.post('/', protect, authorize('admin', 'hr'), async (req, res) => {
   }
 });
 
-// READ - Sab shifts dekhna
-router.get('/', protect, async (req, res) => {
+// READ - Apni company ke shifts dekhna
+router.get('/', protect, tenant, async (req, res) => {
   try {
-    const shifts = await Shift.find();
+    const shifts = await Shift.find({ companyId: req.companyId });
     res.status(200).json(shifts);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -25,11 +27,11 @@ router.get('/', protect, async (req, res) => {
 });
 
 // UPDATE - Shift edit karna (sirf admin/hr)
-router.put('/:id', protect, authorize('admin', 'hr'), async (req, res) => {
+router.put('/:id', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const shift = await Shift.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+    const shift = await Shift.findOneAndUpdate(
+      { _id: req.params.id, companyId: req.companyId },
+      stripTenantFields(req.body),
       { new: true, runValidators: true }
     );
     if (!shift) {
@@ -42,9 +44,9 @@ router.put('/:id', protect, authorize('admin', 'hr'), async (req, res) => {
 });
 
 // DELETE - Shift delete karna (sirf admin)
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, tenant, authorize('admin'), async (req, res) => {
   try {
-    const shift = await Shift.findByIdAndDelete(req.params.id);
+    const shift = await Shift.findOneAndDelete({ _id: req.params.id, companyId: req.companyId });
     if (!shift) {
       return res.status(404).json({ message: 'Shift not found' });
     }

@@ -2,10 +2,23 @@ const express = require('express');
 const router = express.Router();
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
+const Company = require('../models/Company');
 
 // WEBHOOK - Biometric device se attendance receive karna
 router.post('/webhook', async (req, res) => {
   try {
+    // 0. Company ki pehchan: device har request mein company ki biometricKey bhejta hai
+    //    (header `x-biometric-key` behtar hai; jo device header nahi bhej sakti woh ?key=... use kare)
+    const key = req.get('x-biometric-key') || req.query.key;
+    if (!key || typeof key !== 'string') {
+      return res.status(401).json({ message: 'Biometric key required' });
+    }
+    const company = await Company.findOne({ biometricKey: key });
+    if (!company) {
+      return res.status(401).json({ message: 'Invalid biometric key' });
+    }
+    const companyId = company._id;
+
     // Device se aane wala data (ye format device/middleware ke mutabiq adjust hoga)
     const { biometricId, timestamp, deviceId } = req.body;
 
@@ -14,7 +27,7 @@ router.post('/webhook', async (req, res) => {
     }
 
     // 1. Biometric ID se employee dhoondna
-    const employee = await Employee.findOne({ biometricId });
+    const employee = await Employee.findOne({ companyId, biometricId: String(biometricId) });
     if (!employee) {
       return res.status(404).json({ message: 'No employee found with this biometric ID' });
     }
@@ -24,6 +37,7 @@ router.post('/webhook', async (req, res) => {
 
     // 2. Check karna ke aaj ki attendance pehle se bani hai ya nahi
     let attendance = await Attendance.findOne({
+      companyId,
       employeeId: employee._id,
       date: dateOnly,
     });
@@ -31,6 +45,7 @@ router.post('/webhook', async (req, res) => {
     if (!attendance) {
       // 3a. Pehli punch — matlab ye Check-In hai
       attendance = new Attendance({
+        companyId,
         employeeId: employee._id,
         date: dateOnly,
         checkIn: punchTime,

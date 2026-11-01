@@ -4,11 +4,12 @@ const ExcelJS = require('exceljs');
 const Attendance = require('../models/Attendance');
 const Payroll = require('../models/Payroll');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { tenant } = require('../middleware/tenant');
 
 // EXPORT - Attendance Excel report
-router.get('/attendance', protect, authorize('admin', 'hr'), async (req, res) => {
+router.get('/attendance', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const records = await Attendance.find().populate('employeeId', 'fullName employeeCode department');
+    const records = await Attendance.find({ companyId: req.companyId }).populate('employeeId', 'fullName employeeCode department');
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Attendance Report');
@@ -66,9 +67,9 @@ router.get('/attendance', protect, authorize('admin', 'hr'), async (req, res) =>
 });
 
 // EXPORT - Payroll Excel report
-router.get('/payroll', protect, authorize('admin', 'hr'), async (req, res) => {
+router.get('/payroll', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const records = await Payroll.find().populate('employeeId', 'fullName employeeCode department');
+    const records = await Payroll.find({ companyId: req.companyId }).populate('employeeId', 'fullName employeeCode department');
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Payroll Report');

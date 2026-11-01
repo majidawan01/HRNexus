@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Employee = require('../models/Employee');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { tenant } = require('../middleware/tenant');
+const { stripTenantFields } = require('../utils/tenantHelpers');
 
 // CREATE - Naya employee add karna (sirf admin/hr)
-router.post('/', protect, authorize('admin', 'hr'), async (req, res) => {
+router.post('/', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const employee = new Employee(req.body);
+    const employee = new Employee({ ...stripTenantFields(req.body), companyId: req.companyId });
     await employee.save();
     res.status(201).json(employee);
   } catch (error) {
@@ -14,10 +16,10 @@ router.post('/', protect, authorize('admin', 'hr'), async (req, res) => {
   }
 });
 
-// READ - Sab employees dekhna (koi bhi logged-in user)
-router.get('/', protect, async (req, res) => {
+// READ - Apni company ke employees dekhna (koi bhi logged-in user)
+router.get('/', protect, tenant, async (req, res) => {
   try {
-    const employees = await Employee.find();
+    const employees = await Employee.find({ companyId: req.companyId });
     res.status(200).json(employees);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -25,11 +27,11 @@ router.get('/', protect, async (req, res) => {
 });
 
 // UPDATE - Employee ka data edit karna (sirf admin/hr)
-router.put('/:id', protect, authorize('admin', 'hr'), async (req, res) => {
+router.put('/:id', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
-    const employee = await Employee.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+    const employee = await Employee.findOneAndUpdate(
+      { _id: req.params.id, companyId: req.companyId },
+      stripTenantFields(req.body),
       { new: true, runValidators: true }
     );
     if (!employee) {
@@ -42,9 +44,9 @@ router.put('/:id', protect, authorize('admin', 'hr'), async (req, res) => {
 });
 
 // DELETE - Employee ko remove karna (sirf admin)
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, tenant, authorize('admin'), async (req, res) => {
   try {
-    const employee = await Employee.findByIdAndDelete(req.params.id);
+    const employee = await Employee.findOneAndDelete({ _id: req.params.id, companyId: req.companyId });
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }

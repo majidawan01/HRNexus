@@ -2,6 +2,14 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+  // superadmin ke liye null; baaki sab ke liye zaroori
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    default: null,
+    index: true,
+    required: function () { return this.role !== 'superadmin'; }
+  },
   name: {
     type: String,
     required: true
@@ -17,7 +25,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'hr', 'manager', 'employee'],
+    enum: ['superadmin', 'admin', 'hr', 'manager', 'employee'],
     default: 'employee'
   },
   employeeId: {

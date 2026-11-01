@@ -1,16 +1,19 @@
 const mongoose = require('mongoose');
 
 const employeeSchema = new mongoose.Schema({
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    required: true,
+    index: true
+  },
   employeeCode: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   biometricId: {
-  type: String,
-  unique: true,
-  sparse: true   // matlab: agar khaali ho to bhi masla nahi (sab employees ke paas biometric ID na ho)
-},
+    type: String
+  },
   fullName: {
     type: String,
     required: true
@@ -22,8 +25,7 @@ const employeeSchema = new mongoose.Schema({
   contactNumber: String,
   email: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   address: String,
   department: String,
@@ -48,5 +50,14 @@ const employeeSchema = new mongoose.Schema({
     default: 0
   }
 }, { timestamps: true });
+
+// Uniqueness ab company ke andar hai (global nahi)
+employeeSchema.index({ companyId: 1, employeeCode: 1 }, { unique: true });
+employeeSchema.index({ companyId: 1, email: 1 }, { unique: true });
+// biometricId sirf tab unique jab woh string ho (khaali/missing ignore)
+employeeSchema.index(
+  { companyId: 1, biometricId: 1 },
+  { unique: true, partialFilterExpression: { biometricId: { $type: 'string' } } }
+);
 
 module.exports = mongoose.model('Employee', employeeSchema);

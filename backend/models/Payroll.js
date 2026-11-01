@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const payrollSchema = new mongoose.Schema({
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    required: true,
+    index: true
+  },
   employeeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Employee',
@@ -82,6 +88,6 @@ const payrollSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Ek employee ki ek month mein sirf ek hi payroll ho sakti hai
-payrollSchema.index({ employeeId: 1, month: 1, year: 1 }, { unique: true });
+payrollSchema.index({ companyId: 1, employeeId: 1, month: 1, year: 1 }, { unique: true });
 
 module.exports = mongoose.model('Payroll', payrollSchema);

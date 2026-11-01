@@ -4,6 +4,8 @@ A multi-tenant HR SaaS built with the MERN stack. Each company signs up on its o
 
 **Developed by Majid Awan**
 
+**Live demo:** https://hr-nexus-gm73.vercel.app (API: https://hr-nexus-mocha.vercel.app)
+
 - [Frontend README](frontend/README.md): React 19, Vite, Tailwind v4
 - [Backend README](backend/README.md): Express 5, MongoDB, API reference and setup
 

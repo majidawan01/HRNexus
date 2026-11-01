@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 
 export default function Login() {
@@ -103,7 +103,18 @@ export default function Login() {
           </form>
         </motion.div>
 
-        <p className="text-center text-ash text-xs mt-6 font-mono">
+        <p className="text-center text-sm font-body text-ink/70 mt-6">
+          New to HRNexus?{' '}
+          <Link to="/signup" className="text-accent font-medium hover:underline">
+            Create a company
+          </Link>
+          {' · '}
+          <Link to="/" className="hover:text-ink hover:underline">
+            Home
+          </Link>
+        </p>
+
+        <p className="text-center text-ash text-xs mt-4 font-mono">
           HRNexus © 2026 — Built by <span className="text-accent">Majid Awan</span>
         </p>
       </div>

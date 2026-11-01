@@ -8,6 +8,18 @@ const { stripTenantFields } = require('../utils/tenantHelpers');
 // CREATE - Naya employee add karna (sirf admin/hr)
 router.post('/', protect, tenant, authorize('admin', 'hr'), async (req, res) => {
   try {
+    // Plan limit check (free = 10; pro/null = unlimited)
+    const limit = req.company.employeeLimit;
+    if (req.company.plan !== 'pro' && limit != null) {
+      const count = await Employee.countDocuments({ companyId: req.companyId });
+      if (count >= limit) {
+        return res.status(403).json({
+          code: 'PLAN_LIMIT',
+          message: `Employee limit reached (${limit}) on the ${req.company.plan} plan. Upgrade to Pro to add more.`
+        });
+      }
+    }
+
     const employee = new Employee({ ...stripTenantFields(req.body), companyId: req.companyId });
     await employee.save();
     res.status(201).json(employee);

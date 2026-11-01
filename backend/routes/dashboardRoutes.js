@@ -7,16 +7,22 @@ const Payroll = require('../models/Payroll');
 const { protect } = require('../middleware/authMiddleware');
 const { tenant } = require('../middleware/tenant');
 
+// "Aaj" ki hadd Asia/Karachi (UTC+5, DST nahi) ke hisab se: [PKT aadhi raat, agli PKT aadhi raat)
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const pktTodayRange = () => {
+  const pktNow = Date.now() + PKT_OFFSET_MS;
+  const start = Math.floor(pktNow / DAY_MS) * DAY_MS - PKT_OFFSET_MS;
+  return { start: new Date(start), end: new Date(start + DAY_MS) };
+};
+
 // DASHBOARD STATS - Apni company ke numbers (ek hi request mein)
 router.get('/stats', protect, tenant, async (req, res) => {
   try {
     const companyId = req.companyId;
     const canSeePayroll = ['admin', 'hr'].includes(req.user.role);
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(endOfDay.getDate() + 1);
+    const { start: startOfDay, end: endOfDay } = pktTodayRange();
 
     const [totalEmployees, presentToday, pendingLeaves, deptGroups, payrollAgg] = await Promise.all([
       Employee.countDocuments({ companyId }),

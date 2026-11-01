@@ -32,6 +32,11 @@ app.use('/api/export', exportRoutes);
 const dashboardRoutes = require('./routes/dashboardRoutes');
 app.use('/api/dashboard', dashboardRoutes);
 
+const companyRoutes = require('./routes/companyRoutes');
+app.use('/api/company', companyRoutes);
+const superadminRoutes = require('./routes/superadminRoutes');
+app.use('/api/superadmin', superadminRoutes);
+
 // Test route
 app.get('/', (req, res) => {
   res.send('HRNexus Backend is running ✅');

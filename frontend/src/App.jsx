@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
+import Settings from './pages/Settings';
 import SuperadminDashboard from './pages/SuperadminDashboard';
 import NotFound from './pages/NotFound';
 import Login from './pages/Login';
@@ -21,6 +22,14 @@ function App() {
         element={
           <ProtectedRoute roles={['admin']}>
             <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute roles={['admin']}>
+            <Settings />
           </ProtectedRoute>
         }
       />

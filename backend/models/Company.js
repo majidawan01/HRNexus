@@ -19,6 +19,11 @@ const companySchema = new mongoose.Schema({
     type: Number,
     default: FREE_EMPLOYEE_LIMIT
   },
+  // "Load sample data" sirf ek baar chalta hai
+  sampleDataLoaded: {
+    type: Boolean,
+    default: false
+  },
   // Biometric device webhook ke liye company-wise secret key
   biometricKey: {
     type: String,

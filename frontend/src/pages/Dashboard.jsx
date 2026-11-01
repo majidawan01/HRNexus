@@ -1,85 +1,137 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Clock, Calendar, Wallet } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Users, Clock, Calendar, Wallet, AlertTriangle, Sparkles, RefreshCw, UserPlus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import Layout from '../components/Layout';
+import Button from '../components/ui/Button';
+import Skeleton from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
+import UsageBar from '../components/ui/UsageBar';
 import API from '../api/axios';
+import { useAuth } from '../context/auth-context';
+import { useUpgrade } from '../context/upgrade-context';
+
+const errorText = (err) => {
+  if (err.code === 'ECONNABORTED') return 'The server is taking too long to respond.';
+  if (!err.response) return 'Cannot reach the server. Check your connection.';
+  return err.response.data?.message || 'Could not load the dashboard.';
+};
 
 export default function Dashboard() {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const [stats, setStats] = useState({
-    totalEmployees: 0,
-    presentToday: 0,
-    pendingLeaves: 0,
-    totalPayroll: 0,
-  });
-  const [chartData, setChartData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user, company } = useAuth();
+  const { openUpgrade } = useUpgrade();
+  const [stats, setStats] = useState(null);
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const token = localStorage.getItem('token');
-  const headers = { Authorization: `Bearer ${token}` };
+  const isAdmin = user.role === 'admin';
+  const canManage = isAdmin || user.role === 'hr';
 
+  // Ek hi request (/dashboard/stats). Timeout axios mein hai (15s), is liye "Loading..." kabhi hamesha nahi atakta.
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [empRes, attRes, leaveRes, payRes] = await Promise.all([
-          API.get('/employees', { headers }),
-          API.get('/attendance', { headers }),
-          API.get('/leaves', { headers }),
-          API.get('/payroll', { headers }),
-        ]);
-
-        const today = new Date().toDateString();
-        const presentToday = attRes.data.filter(
-          (a) => new Date(a.date).toDateString() === today && a.status !== 'absent'
-        ).length;
-
-        const pendingLeaves = leaveRes.data.filter((l) => l.status === 'pending').length;
-
-        const totalPayroll = payRes.data.reduce((sum, p) => sum + (p.netSalary || 0), 0);
-
-        setStats({
-          totalEmployees: empRes.data.length,
-          presentToday,
-          pendingLeaves,
-          totalPayroll,
-        });
-
-        const deptCounts = {};
-        empRes.data.forEach((emp) => {
-          const dept = emp.department || 'Other';
-          deptCounts[dept] = (deptCounts[dept] || 0) + 1;
-        });
-        setChartData(Object.entries(deptCounts).map(([name, count]) => ({ name, count })));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+    let cancelled = false;
+    API.get('/dashboard/stats')
+      .then((res) => {
+        if (cancelled) return;
+        setStats(res.data);
+        setStatus('ready');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(errorText(err));
+        setStatus('error');
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [reloadKey]);
 
-    fetchStats();
-  }, []);
+  const retry = () => {
+    setStatus('loading');
+    setReloadKey((k) => k + 1);
+  };
+
+  const loading = status === 'loading';
+  const showPayroll = stats ? stats.totalPayroll !== null : canManage;
 
   const cards = [
-    { label: 'Total Employees', value: stats.totalEmployees, icon: Users, bg: 'bg-accent/10', text: 'text-accent' },
-    { label: 'Present Today', value: stats.presentToday, icon: Clock, bg: 'bg-teal/10', text: 'text-teal' },
-    { label: 'Pending Leaves', value: stats.pendingLeaves, icon: Calendar, bg: 'bg-rust/10', text: 'text-rust' },
-    { label: 'Total Payroll (Net)', value: `Rs. ${stats.totalPayroll.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, bg: 'bg-accent/10', text: 'text-accent' },
+    { label: 'Total Employees', value: stats?.totalEmployees, icon: Users, bg: 'bg-accent/10', text: 'text-accent' },
+    { label: 'Present Today', value: stats?.presentToday, icon: Clock, bg: 'bg-teal/10', text: 'text-teal' },
+    { label: 'Pending Leaves', value: stats?.pendingLeaves, icon: Calendar, bg: 'bg-rust/10', text: 'text-rust' },
+    ...(showPayroll
+      ? [
+          {
+            label: 'Total Payroll (Net)',
+            value: stats ? `Rs. ${stats.totalPayroll.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : undefined,
+            icon: Wallet,
+            bg: 'bg-accent/10',
+            text: 'text-accent',
+          },
+        ]
+      : []),
   ];
+
+  // Usage: employees / limit (limit null = Pro, unlimited)
+  const used = stats?.totalEmployees ?? 0;
+  const limit = company?.employeeLimit ?? null;
+  const onFree = company?.plan === 'free' && limit != null;
+  const pct = onFree ? used / limit : 0;
+  const nearLimit = onFree && stats && pct >= 0.8;
+  const atLimit = onFree && stats && used >= limit;
 
   return (
     <Layout>
-      <div className="p-8">
+      <div className="p-4 sm:p-8">
         <div className="mb-8">
           <p className="font-mono text-xs text-ash uppercase tracking-widest mb-1">Overview</p>
-          <h1 className="font-display text-3xl font-semibold text-ink">
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-ink">
             Welcome back, <span className="text-accent">{user.name?.split(' ')[0]}</span>
           </h1>
         </div>
 
+        {status === 'error' && (
+          <div role="alert" className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between rounded-2xl border border-rust/30 bg-rust/5 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={20} className="text-rust mt-0.5 shrink-0" />
+              <div>
+                <p className="font-display font-semibold text-ink">Could not load your dashboard</p>
+                <p className="text-sm font-body text-ink/70">{error}</p>
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" onClick={retry}>
+              <RefreshCw size={15} /> Try again
+            </Button>
+          </div>
+        )}
+
+        {/* Upgrade ka suggestion (80% ya zyada) */}
+        {nearLimit && canManage && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between rounded-2xl border border-accent/30 bg-accent/[0.06] px-5 py-4">
+            <div className="flex items-start gap-3">
+              <Sparkles size={20} className="text-accent mt-0.5 shrink-0" />
+              <div>
+                <p className="font-display font-semibold text-ink">
+                  {atLimit ? 'You have reached your Free plan limit' : `You have used ${used} of ${limit} employees`}
+                </p>
+                <p className="text-sm font-body text-ink/70">
+                  {isAdmin
+                    ? 'Upgrade to Pro for unlimited employees.'
+                    : 'Ask your admin to upgrade to Pro for unlimited employees.'}
+                </p>
+              </div>
+            </div>
+            {isAdmin && (
+              <Button size="sm" onClick={openUpgrade}>
+                Upgrade to Pro
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${cards.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4 mb-6`}>
           {cards.map((card, i) => (
             <motion.div
               key={card.label}
@@ -91,15 +143,29 @@ export default function Dashboard() {
               <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center mb-4 ${card.text}`}>
                 <card.icon size={20} />
               </div>
-              <p className="font-mono text-xs uppercase tracking-wider text-ash mb-1">
-                {card.label}
-              </p>
-              <p className="font-display text-2xl font-semibold text-ink">
-                {loading ? '—' : card.value}
-              </p>
+              <p className="font-mono text-xs uppercase tracking-wider text-ash mb-1">{card.label}</p>
+              {loading ? (
+                <Skeleton className="h-8 w-24 mt-1" />
+              ) : (
+                <p className="font-display text-2xl font-semibold text-ink">{card.value ?? '—'}</p>
+              )}
             </motion.div>
           ))}
         </div>
+
+        {/* Usage */}
+        {canManage && company && (
+          <div className="bg-surface rounded-2xl p-6 border border-border shadow-sm mb-6">
+            {loading ? (
+              <>
+                <Skeleton className="h-4 w-40 mb-3" />
+                <Skeleton className="h-2 w-full" />
+              </>
+            ) : (
+              <UsageBar used={used} limit={limit} label="Employees used" />
+            )}
+          </div>
+        )}
 
         {/* Chart */}
         <motion.div
@@ -108,27 +174,53 @@ export default function Dashboard() {
           transition={{ duration: 0.4, delay: 0.3 }}
           className="bg-surface rounded-2xl p-6 border border-border shadow-sm"
         >
-          <p className="font-mono text-xs uppercase tracking-wider text-ash mb-4">
-            Employees by Department
-          </p>
-          {!loading && chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A0A" />
-                <XAxis dataKey="name" stroke="#8A8A8A" fontSize={12} />
-                <YAxis stroke="#8A8A8A" fontSize={12} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1A1A1A', border: 'none', borderRadius: '12px', color: '#FFFFFF' }}
-                />
-                <Bar dataKey="count" fill="#4C5FD9" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <p className="font-mono text-xs uppercase tracking-wider text-ash mb-4">Employees by Department</p>
+
+          {loading ? (
+            <div className="h-72 flex items-end gap-4 px-2" aria-label="Loading chart">
+              {[55, 80, 40, 65, 30].map((h, i) => (
+                <Skeleton key={i} className="flex-1 rounded-b-none" style={{ height: `${h}%` }} />
+              ))}
+            </div>
+          ) : status === 'error' ? (
+            <EmptyState icon={AlertTriangle} title="Chart unavailable" text="We could not load the data for this chart." />
+          ) : stats.departmentCounts.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No employees yet"
+              text="Add your first employee to see the department breakdown."
+              action={
+                canManage && (
+                  <Button to="/employees" size="sm">
+                    <UserPlus size={16} /> Add employee
+                  </Button>
+                )
+              }
+            />
           ) : (
-            <p className="text-ash font-body text-sm py-12 text-center">
-              {loading ? 'Loading chart...' : 'No data yet.'}
-            </p>
+            // Parent ki height fixed hai, warna ResponsiveContainer 0 height par chart dikhata hi nahi
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.departmentCounts}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A0A" />
+                  <XAxis dataKey="name" stroke="#8A8A8A" fontSize={12} />
+                  <YAxis stroke="#8A8A8A" fontSize={12} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1A1A1A', border: 'none', borderRadius: '12px', color: '#FFFFFF' }}
+                    cursor={{ fill: '#4C5FD90D' }}
+                  />
+                  <Bar dataKey="count" fill="#4C5FD9" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </motion.div>
+
+        {isAdmin && company?.plan === 'free' && !nearLimit && (
+          <p className="mt-6 text-xs font-body text-ash">
+            Need more room? <Link to="/settings" className="text-accent hover:underline">See your plan</Link>
+          </p>
+        )}
       </div>
     </Layout>
   );

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Users, Clock, Calendar, Wallet, Building2, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, Calendar, Wallet, Building2, Settings, Sparkles, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
+import { useUpgrade } from '../context/upgrade-context';
+import Button from './ui/Button';
 import Logo from './ui/Logo';
 import PlanBadge from './ui/PlanBadge';
 import Skeleton from './ui/Skeleton';
@@ -13,12 +15,14 @@ const COMPANY_NAV = [
   { to: '/attendance', label: 'Attendance', icon: Clock },
   { to: '/leaves', label: 'Leaves', icon: Calendar },
   { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin', 'hr'] },
+  { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
 ];
 
 const SUPERADMIN_NAV = [{ to: '/superadmin', label: 'Companies', icon: Building2 }];
 
 function SidebarContent({ onNavigate }) {
   const { user, company, signOut } = useAuth();
+  const { openUpgrade } = useUpgrade();
   const navigate = useNavigate();
   const isSuperadmin = user?.role === 'superadmin';
 
@@ -46,6 +50,18 @@ function SidebarContent({ onNavigate }) {
                   {company.name}
                 </p>
                 <PlanBadge plan={company.plan} className="mt-1.5" />
+                {user?.role === 'admin' && company.plan === 'free' && (
+                  <Button
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => {
+                      onNavigate?.();
+                      openUpgrade();
+                    }}
+                  >
+                    <Sparkles size={14} /> Upgrade to Pro
+                  </Button>
+                )}
               </>
             ) : (
               <>

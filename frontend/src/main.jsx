@@ -5,13 +5,19 @@ import './index.css'
 import App from './App.jsx'
 import { ToastProvider } from './context/ToastProvider.jsx'
 import { AuthProvider } from './context/AuthProvider.jsx'
+import { ConfirmProvider } from './context/ConfirmProvider.jsx'
+import { UpgradeProvider } from './context/UpgradeProvider.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <App />
+          <ConfirmProvider>
+            <UpgradeProvider>
+              <App />
+            </UpgradeProvider>
+          </ConfirmProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

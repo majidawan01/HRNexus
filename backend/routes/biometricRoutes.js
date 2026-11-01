@@ -33,7 +33,13 @@ router.post('/webhook', async (req, res) => {
     }
 
     const punchTime = new Date(timestamp);
-    const dateOnly = new Date(punchTime.getFullYear(), punchTime.getMonth(), punchTime.getDate());
+    if (isNaN(punchTime.getTime())) {
+      return res.status(400).json({ message: 'Invalid timestamp' });
+    }
+    // Attendance ki `date` = punch ki Asia/Karachi (UTC+5) calendar date, UTC aadhi raat ke taur par store.
+    // (Server ke local time par nahi: Vercel UTC hai, is se raat 00:00-05:00 PKT ki punch ghalat din mein jati.)
+    const pktPunch = new Date(punchTime.getTime() + 5 * 60 * 60 * 1000);
+    const dateOnly = new Date(Date.UTC(pktPunch.getUTCFullYear(), pktPunch.getUTCMonth(), pktPunch.getUTCDate()));
 
     // 2. Check karna ke aaj ki attendance pehle se bani hai ya nahi
     let attendance = await Attendance.findOne({

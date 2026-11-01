@@ -7,7 +7,7 @@ import Logo from '../components/ui/Logo';
 import Button from '../components/ui/Button';
 import Field from '../components/ui/Field';
 import { useToast } from '../context/toast-context';
-import { saveSession } from '../lib/session';
+import { useAuth } from '../context/auth-context';
 
 const BENEFITS = [
   'Your own private company workspace',
@@ -21,6 +21,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Signup() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { signIn } = useAuth();
   const [form, setForm] = useState({ companyName: '', adminName: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
@@ -56,9 +57,9 @@ export default function Signup() {
         email: form.email.trim(),
         password: form.password,
       });
-      saveSession(res.data);
+      signIn(res.data);
       toast.success(`Welcome to HRNexus, ${form.adminName.trim().split(' ')[0]}!`);
-      navigate('/dashboard');
+      navigate('/onboarding');
     } catch (err) {
       const message =
         err.response?.data?.message ||

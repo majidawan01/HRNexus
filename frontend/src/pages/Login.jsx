@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import { useAuth } from '../context/auth-context';
+import { homePathFor } from '../lib/session';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -9,6 +11,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, signIn } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,15 +20,22 @@ export default function Login() {
 
     try {
       const res = await API.post('/auth/login', { email, password });
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data));
-      navigate('/dashboard');
+      signIn(res.data);
+      navigate(homePathFor(res.data));
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Try again.');
+      setError(
+        err.response?.data?.message ||
+          (err.response ? 'Login failed. Try again.' : 'Cannot reach the server. Check your connection and try again.')
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  // Pehle se login hai to login page dikhane ka faida nahi
+  if (user) {
+    return <Navigate to={homePathFor(user)} replace />;
+  }
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center px-4">

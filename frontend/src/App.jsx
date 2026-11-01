@@ -1,6 +1,9 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Signup from './pages/Signup';
+import Onboarding from './pages/Onboarding';
+import SuperadminDashboard from './pages/SuperadminDashboard';
+import NotFound from './pages/NotFound';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
@@ -14,6 +17,22 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute roles={['admin']}>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin"
+        element={
+          <ProtectedRoute roles={['superadmin']}>
+            <SuperadminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
@@ -24,7 +43,7 @@ function App() {
       <Route
   path="/payroll"
   element={
-    <ProtectedRoute>
+    <ProtectedRoute roles={['admin', 'hr']}>
       <Payroll />
     </ProtectedRoute>
   }
@@ -54,7 +73,7 @@ function App() {
   }
 />
       <Route path="/" element={<Landing />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
